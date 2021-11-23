@@ -7,6 +7,8 @@ require("dotenv").config();
 const { MongoClient } = require("mongodb");
 // stripe payment secret
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
+// express file upload (npm i express-fileupload) - it separate the body file if has, google it for details
+const fileUpload = require("express-fileupload");
 
 const port = process.env.PORT || 5000;
 
@@ -17,9 +19,12 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// middleware
+// cors middleware to use different port
 app.use(cors());
+// json data pass from body middleware
 app.use(express.json());
+// file upload middleware
+app.use(fileUpload());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.weui7.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, {
@@ -47,6 +52,7 @@ async function run() {
     const database = client.db("doctors_portal");
     const appointmentsCollection = database.collection("appointments");
     const usersCollection = database.collection("users");
+    const doctorsCollection = database.collection("doctors");
 
     // GET Appointments by email and date using jwt
     app.get("/appointments", verifyToken, async (req, res) => {
@@ -93,6 +99,30 @@ async function run() {
       };
       const result = await appointmentsCollection.updateOne(filter, updateDoc);
       res.json(result);
+    });
+
+    // POST a doctor and UPLOAD FILE
+    app.post("/doctors", async (req, res) => {
+      const name = req.body.name;
+      const email = req.body.email;
+      const pic = req.files.image;
+      const picData = pic.data;
+      const encodedPic = picData.toString("base64");
+      const imageBuffer = Buffer.from(encodedPic, "base64");
+      const doctor = {
+        name,
+        email,
+        image: imageBuffer,
+      };
+      const result = await doctorsCollection.insertOne(doctor);
+
+      res.json(result);
+    });
+    // GET all doctors
+    app.get("/doctors", async (req, res) => {
+      const cursor = doctorsCollection.find({});
+      const doctors = await cursor.toArray();
+      res.json(doctors);
     });
     // GET user if admin
     app.get("/users/:email", async (req, res) => {
